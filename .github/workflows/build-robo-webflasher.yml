@@ -1,0 +1,79 @@
+name: Build Robo ESP32 Web Flasher
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'robo-flasher-src/**'
+      - '.github/workflows/build-robo-webflasher.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 core
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+
+      - name: Install esptool
+        run: python3 -m pip install --upgrade esptool
+
+      - name: Compile controller ESP32-C3
+        run: |
+          mkdir -p build/controller
+          arduino-cli compile --fqbn esp32:esp32:esp32c3 --output-dir build/controller robo-flasher-src/controle_c3_gy521_v6
+
+      - name: Compile robot ESP32 WROOM
+        run: |
+          mkdir -p build/robot
+          arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir build/robot robo-flasher-src/robo_esp32_espnow_v6_1
+
+      - name: Find boot_app0
+        shell: bash
+        run: |
+          BOOT_APP0=$(find "$HOME/.arduino15/packages/esp32" -type f -name boot_app0.bin | head -n 1)
+          echo "BOOT_APP0=$BOOT_APP0" >> "$GITHUB_ENV"
+          test -f "$BOOT_APP0"
+
+      - name: Merge controller firmware
+        shell: bash
+        run: |
+          CTRL_BOOT=$(find build/controller -maxdepth 1 -type f -name '*.bootloader.bin' | head -n 1)
+          CTRL_PART=$(find build/controller -maxdepth 1 -type f -name '*.partitions.bin' | head -n 1)
+          CTRL_APP=$(find build/controller -maxdepth 1 -type f -name '*.ino.bin' | head -n 1)
+          test -f "$CTRL_BOOT" && test -f "$CTRL_PART" && test -f "$CTRL_APP"
+          esptool --chip esp32c3 merge-bin -o robo-flasher/controller-esp32c3-v6.bin --flash-mode dio --flash-freq 40m --flash-size 4MB 0x0000 "$CTRL_BOOT" 0x8000 "$CTRL_PART" 0xe000 "$BOOT_APP0" 0x10000 "$CTRL_APP"
+
+      - name: Merge robot firmware
+        shell: bash
+        run: |
+          ROBOT_BOOT=$(find build/robot -maxdepth 1 -type f -name '*.bootloader.bin' | head -n 1)
+          ROBOT_PART=$(find build/robot -maxdepth 1 -type f -name '*.partitions.bin' | head -n 1)
+          ROBOT_APP=$(find build/robot -maxdepth 1 -type f -name '*.ino.bin' | head -n 1)
+          test -f "$ROBOT_BOOT" && test -f "$ROBOT_PART" && test -f "$ROBOT_APP"
+          esptool --chip esp32 merge-bin -o robo-flasher/robot-esp32-v6_1.bin --flash-mode dio --flash-freq 40m --flash-size 4MB 0x1000 "$ROBOT_BOOT" 0x8000 "$ROBOT_PART" 0xe000 "$BOOT_APP0" 0x10000 "$ROBOT_APP"
+
+      - name: Commit compiled firmware
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add robo-flasher/controller-esp32c3-v6.bin robo-flasher/robot-esp32-v6_1.bin
+          if git diff --cached --quiet; then
+            echo "Firmware unchanged"
+            exit 0
+          fi
+          git commit -m "Atualiza binários do Web Flasher [skip ci]"
+          git push
