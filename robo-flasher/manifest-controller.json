@@ -1,0 +1,13 @@
+{
+  "name": "Controle Robo ESP32-C3 V6",
+  "version": "6.0.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-C3",
+      "parts": [
+        { "path": "controller-esp32c3-v6.bin", "offset": 0 }
+      ]
+    }
+  ]
+}
