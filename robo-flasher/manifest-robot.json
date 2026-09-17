@@ -1,0 +1,13 @@
+{
+  "name": "Robo ESP32 V6.1",
+  "version": "6.1.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        { "path": "robot-esp32-v6_1.bin", "offset": 0 }
+      ]
+    }
+  ]
+}
